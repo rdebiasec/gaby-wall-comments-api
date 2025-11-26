@@ -7,6 +7,7 @@ const config = validateConfig({
   collectionName: process.env.COLLECTION_NAME || "Comments",
 });
 const apiKey = process.env.API_KEY; // optional simple protection
+const allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS || "*");
 
 const BODY_BYTE_LIMIT = 2 * 1024; // 2 KB payload ceiling
 const MAX_MESSAGE_LENGTH = 1024;
@@ -59,6 +60,12 @@ function checkApiKey(req, res) {
 }
 
 export default async function handler(req, res) {
+  applyCors(req, res);
+
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+
   const requestMeta = getRequestContext(req);
 
   if (!checkApiKey(req, res)) return;
@@ -69,7 +76,7 @@ export default async function handler(req, res) {
   } else if (req.method === "GET") {
     return handleGet(req, res, requestMeta);
   } else {
-    res.setHeader("Allow", ["GET", "POST"]);
+    res.setHeader("Allow", ["GET", "POST", "OPTIONS"]);
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 }
@@ -290,4 +297,31 @@ function log(level, message, meta = {}) {
   } else {
     console.log(serialized);
   }
+}
+
+function parseAllowedOrigins(raw) {
+  return raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function applyCors(req, res) {
+  const origin = req.headers.origin;
+  const allowlist = allowedOrigins.length > 0 ? allowedOrigins : ["*"];
+  const allowedOrigin =
+    origin && (allowlist.includes("*") || allowlist.includes(origin))
+      ? origin
+      : allowlist.includes("*")
+      ? "*"
+      : allowlist[0];
+
+  res.setHeader("Access-Control-Allow-Origin", allowedOrigin || "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type,X-API-Key"
+  );
+  res.setHeader("Access-Control-Max-Age", "86400");
+  res.setHeader("Vary", "Origin");
 }
